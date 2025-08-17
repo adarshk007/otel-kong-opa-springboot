@@ -1,0 +1,70 @@
+services:
+  kong:
+    image: kong:3.7
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: "/kong/declarative/kong.yml"
+      KONG_PROXY_LISTEN: "0.0.0.0:8000, 0.0.0.0:8443 ssl"
+      KONG_ADMIN_LISTEN: "0.0.0.0:8001"
+      KONG_LOG_LEVEL: "info"
+      KONG_PLUGINS: "bundled"
+    ports:
+      - "8000:8000"   # proxy
+      - "8443:8443"   # proxy ssl
+      - "8001:8001"   # admin api
+    volumes:
+      - ./kong:/kong/declarative:ro
+    depends_on:
+      - app
+      - otel-collector
+
+  app:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    environment:
+      OTEL_SERVICE_NAME: "spring-app"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+      OTEL_TRACES_EXPORTER: "otlp"
+      OTEL_METRICS_EXPORTER: "none"
+      OTEL_LOGS_EXPORTER: "none"
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=dev"
+      SERVER_PORT: "8080"
+      OPA_URL: "http://opa:8181/v1/data/http/authz/allow"
+    expose:
+      - "8080"
+    depends_on:
+      - opa
+      - otel-collector
+
+  opa:
+    image: openpolicyagent/opa:0.64.0
+    command: [
+      "run",
+      "--server",
+      "--addr=0.0.0.0:8181",
+      "--log-level=info",
+      "/policies"
+    ]
+    volumes:
+      - ./opa:/policies:ro
+    expose:
+      - "8181"
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.101.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./otel-collector/config.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    ports:
+      - "16686:16686"  # Jaeger UI
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    depends_on:
+      - otel-collector

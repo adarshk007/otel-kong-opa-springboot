@@ -1,0 +1,27 @@
+_format_version: "3.0"
+_transform: true
+
+services:
+  - name: spring-service
+    url: http://app:8080
+    routes:
+      - name: spring-route
+        paths:
+          - /api
+
+# Enable the OpenTelemetry plugin globally so all requests are traced.
+plugins:
+  - name: opentelemetry
+    config:
+      endpoint: http://otel-collector:4317
+      headers: []
+      resource_attributes:
+        service.name: kong
+      batch_flush_delay: 1
+      batch_span_count: 200
+      queue:
+        max_batch_size: 2000
+        max_queue_size: 10000
+      header_type: w3c        # propagate W3C trace context
+      tracer:
+        sampling_rate: 1      # 100% sampling for demo
